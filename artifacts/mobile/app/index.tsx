@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 
 import { useApp } from "@/context/AppContext";
+import { useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
 import {
   TranscriptionProgress,
@@ -46,6 +47,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { settings, getApiUrl } = useApp();
+  const { addEntry } = useHistory();
 
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
   const [progress, setProgress] = useState<TranscriptionProgress | null>(null);
@@ -128,6 +130,13 @@ export default function HomeScreen() {
         }
       );
       setTranscription(result);
+      await addEntry({
+        text: result,
+        fileName: selectedFile.name,
+        fileSize,
+        provider: settings.provider,
+        model: settings.model,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: unknown) {
       const msg =
@@ -199,13 +208,22 @@ export default function HomeScreen() {
           <View style={s.logoMark} />
           <Text style={s.logoText}>Voxtract</Text>
         </View>
-        <Pressable
-          onPress={() => router.push("/settings")}
-          style={s.iconBtn}
-          hitSlop={10}
-        >
-          <Feather name="settings" size={22} color={colors.mutedForeground} />
-        </Pressable>
+        <View style={s.headerActions}>
+          <Pressable
+            onPress={() => router.push("/history")}
+            style={s.iconBtn}
+            hitSlop={10}
+          >
+            <Feather name="clock" size={20} color={colors.mutedForeground} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/settings")}
+            style={s.iconBtn}
+            hitSlop={10}
+          >
+            <Feather name="settings" size={20} color={colors.mutedForeground} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -398,6 +416,10 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
       color: colors.text,
       fontFamily: "Inter_700Bold",
       letterSpacing: -0.5,
+    },
+    headerActions: {
+      flexDirection: "row",
+      gap: 8,
     },
     iconBtn: {
       width: 38,
