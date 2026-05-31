@@ -1,0 +1,1 @@
+- [expo-file-system v19 legacy API](expo-file-system-legacy.md) — v19 moved cacheDirectory/EncodingType/readAsStringAsync to `expo-file-system/legacy`; importing from main throws at runtime.
