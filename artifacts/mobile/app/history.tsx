@@ -19,6 +19,7 @@ import { Feather } from "@expo/vector-icons";
 
 import { HistoryEntry, useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
+import { audioStem, uniqueTxtUri } from "@/utils/fileName";
 
 function formatDate(ms: number): string {
   const d = new Date(ms);
@@ -66,9 +67,8 @@ function HistoryCard({
 
   const handleShare = useCallback(async () => {
     Haptics.selectionAsync();
-    const safeName = entry.fileName.replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, "_");
-    const fileName = `voxtract_${safeName}_${entry.id}.txt`;
-    const fileUri = (ExpoFileSystem.cacheDirectory || "") + fileName;
+    const stem = audioStem(entry.fileName);
+    const { uri: fileUri, name: fileName } = await uniqueTxtUri(stem);
     await ExpoFileSystem.writeAsStringAsync(fileUri, entry.text, {
       encoding: ExpoFileSystem.EncodingType.UTF8,
     });

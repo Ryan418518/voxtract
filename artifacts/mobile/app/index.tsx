@@ -23,6 +23,7 @@ import { Feather } from "@expo/vector-icons";
 import { useApp } from "@/context/AppContext";
 import { useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
+import { audioStem, uniqueTxtUri } from "@/utils/fileName";
 import {
   TranscriptionProgress,
   transcribeAudio,
@@ -157,10 +158,10 @@ export default function HomeScreen() {
   }, [transcription]);
 
   const handleShare = useCallback(async () => {
-    if (!transcription) return;
+    if (!transcription || !selectedFile) return;
     Haptics.selectionAsync();
-    const fileName = `voxtract_${Date.now()}.txt`;
-    const fileUri = (ExpoFileSystem.cacheDirectory || "") + fileName;
+    const stem = audioStem(selectedFile.name);
+    const { uri: fileUri, name: fileName } = await uniqueTxtUri(stem);
     await ExpoFileSystem.writeAsStringAsync(fileUri, transcription, {
       encoding: ExpoFileSystem.EncodingType.UTF8,
     });
@@ -183,7 +184,7 @@ export default function HomeScreen() {
         });
       }
     }
-  }, [transcription]);
+  }, [transcription, selectedFile]);
 
   const s = makeStyles(colors, insets);
 
