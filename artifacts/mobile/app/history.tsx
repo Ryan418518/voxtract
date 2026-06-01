@@ -19,6 +19,7 @@ import { Feather } from "@expo/vector-icons";
 
 import { HistoryEntry, useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
+import { worksheetStore } from "@/stores/worksheetStore";
 import { audioStem, uniqueTxtUri } from "@/utils/fileName";
 
 function formatDate(ms: number): string {
@@ -90,6 +91,17 @@ function HistoryCard({
         });
       }
     }
+  }, [entry]);
+
+  const handleEdit = useCallback(() => {
+    worksheetStore.set({
+      text: entry.text,
+      title: entry.fileName,
+      fileSize: entry.fileSize,
+      provider: entry.provider,
+      model: entry.model,
+    });
+    router.push("/worksheet");
   }, [entry]);
 
   const s = makeCardStyles(colors);
@@ -167,6 +179,16 @@ function HistoryCard({
         >
           <Feather name="share-2" size={14} color={colors.mutedForeground} />
           <Text style={s.actionText}>تصدير</Text>
+        </Pressable>
+
+        <View style={s.actionDivider} />
+
+        <Pressable
+          onPress={handleEdit}
+          style={({ pressed }) => [s.actionBtn, pressed && s.actionPressed]}
+        >
+          <Feather name="edit-3" size={14} color={colors.primary} />
+          <Text style={[s.actionText, { color: colors.primary }]}>تحرير</Text>
         </Pressable>
 
         <View style={s.actionDivider} />

@@ -31,6 +31,7 @@ function RootLayoutNav() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ headerShown: false }} />
       <Stack.Screen name="history" options={{ headerShown: false }} />
+      <Stack.Screen name="worksheet" options={{ headerShown: false }} />
     </Stack>
   );
 }

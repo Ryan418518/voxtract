@@ -23,6 +23,7 @@ import { WaveformAnimation } from "@/components/WaveformAnimation";
 import { useApp } from "@/context/AppContext";
 import { useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
+import { worksheetStore } from "@/stores/worksheetStore";
 import { audioStem, uniqueTxtUri } from "@/utils/fileName";
 import {
   TranscriptionProgress,
@@ -185,6 +186,18 @@ export default function HomeScreen() {
       }
     }
   }, [transcription, selectedFile]);
+
+  const handleEdit = useCallback(() => {
+    if (!transcription || !selectedFile) return;
+    worksheetStore.set({
+      text: transcription,
+      title: selectedFile.name,
+      fileSize: selectedFile.size,
+      provider: settings.provider,
+      model: settings.model,
+    });
+    router.push("/worksheet");
+  }, [transcription, selectedFile, settings]);
 
   const s = makeStyles(colors, insets);
 
@@ -368,6 +381,17 @@ export default function HomeScreen() {
               >
                 <Feather name="share-2" size={16} color={colors.primary} />
                 <Text style={s.actionBtnText}>تصدير TXT</Text>
+              </Pressable>
+              <View style={s.actionDivider} />
+              <Pressable
+                onPress={handleEdit}
+                style={({ pressed }) => [
+                  s.actionBtn,
+                  pressed && s.actionBtnPressed,
+                ]}
+              >
+                <Feather name="edit-3" size={16} color={colors.primary} />
+                <Text style={s.actionBtnText}>تحرير</Text>
               </Pressable>
             </View>
           </View>
