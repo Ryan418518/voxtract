@@ -79,6 +79,10 @@ export default function WorksheetScreen() {
   const [draftTitle, setDraftTitle] = useState(title);
   const [text, setText] = useState(initialData?.text ?? "");
   const [processing, setProcessing] = useState<TextProcessingOp | null>(null);
+  const [chunkProgress, setChunkProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [copyDone, setCopyDone] = useState(false);
   const [saveDone, setSaveDone] = useState(false);
   const [undoStack, setUndoStack] = useState<UndoState[]>([]);
@@ -142,18 +146,29 @@ export default function WorksheetScreen() {
 
       pushUndo({ text, title });
       setProcessing(op);
+      setChunkProgress(null);
 
       try {
-        const result = await processText(text, op, settings.apiKey.trim());
+        const result = await processText(
+          text,
+          op,
+          settings.apiKey.trim(),
+          (chunkIndex, totalChunks) => {
+            if (totalChunks > 1) {
+              setChunkProgress({ current: chunkIndex + 1, total: totalChunks });
+            }
+          }
+        );
         setText(result);
+        setChunkProgress(null);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "حدث خطأ غير متوقع";
         Alert.alert("خطأ", msg);
-        // Revert undo on error
         setUndoStack((prev) => prev.slice(1));
       } finally {
         setProcessing(null);
+        setChunkProgress(null);
       }
     },
     [text, title, settings.apiKey, pushUndo]
@@ -286,7 +301,11 @@ export default function WorksheetScreen() {
                 <Text style={[s.aiBtnLabel, { color: btn.color }]}>
                   {btn.label}
                 </Text>
-                <Text style={s.aiBtnDesc}>{btn.desc}</Text>
+                <Text style={s.aiBtnDesc}>
+                  {isActive && chunkProgress && chunkProgress.total > 1
+                    ? `جزء ${chunkProgress.current} من ${chunkProgress.total}`
+                    : btn.desc}
+                </Text>
               </View>
             </Pressable>
           );
