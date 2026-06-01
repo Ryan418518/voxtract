@@ -6,7 +6,6 @@ import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
 import React, { useCallback, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   Platform,
@@ -20,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Feather } from "@expo/vector-icons";
 
+import { WaveformAnimation } from "@/components/WaveformAnimation";
 import { useApp } from "@/context/AppContext";
 import { useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
@@ -233,36 +233,50 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Upload Zone */}
-        <Pressable
-          onPress={handlePickFile}
-          style={({ pressed }) => [s.uploadZone, pressed && s.uploadZonePressed]}
-        >
-          <View style={s.uploadIconWrap}>
-            <Feather name="mic" size={36} color={colors.primary} />
-          </View>
-          {selectedFile ? (
-            <>
-              <Text style={s.uploadTitle} numberOfLines={1}>
+        {/* Upload Zone / Waveform */}
+        {isTranscribing ? (
+          <View style={s.waveformZone}>
+            <WaveformAnimation active={isTranscribing} height={64} />
+            <Text style={s.waveformTitle}>
+              {progress?.message ?? "جاري التفريغ..."}
+            </Text>
+            {selectedFile && (
+              <Text style={s.waveformSub} numberOfLines={1}>
                 {selectedFile.name}
               </Text>
-              <Text style={s.uploadSub}>
-                {formatBytes(selectedFile.size)} · اضغط لتغيير الملف
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={s.uploadTitle}>اختر ملفاً صوتياً</Text>
-              <Text style={s.uploadSub}>
-                MP3 · WAV · M4A · OGG · FLAC وغيرها
-              </Text>
-            </>
-          )}
-          <View style={s.uploadBadge}>
-            <Feather name="upload" size={13} color={colors.primary} />
-            <Text style={s.uploadBadgeText}>رفع ملف</Text>
+            )}
           </View>
-        </Pressable>
+        ) : (
+          <Pressable
+            onPress={handlePickFile}
+            style={({ pressed }) => [s.uploadZone, pressed && s.uploadZonePressed]}
+          >
+            <View style={s.uploadIconWrap}>
+              <Feather name="mic" size={36} color={colors.primary} />
+            </View>
+            {selectedFile ? (
+              <>
+                <Text style={s.uploadTitle} numberOfLines={1}>
+                  {selectedFile.name}
+                </Text>
+                <Text style={s.uploadSub}>
+                  {formatBytes(selectedFile.size)} · اضغط لتغيير الملف
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={s.uploadTitle}>اختر ملفاً صوتياً</Text>
+                <Text style={s.uploadSub}>
+                  MP3 · WAV · M4A · OGG · FLAC وغيرها
+                </Text>
+              </>
+            )}
+            <View style={s.uploadBadge}>
+              <Feather name="upload" size={13} color={colors.primary} />
+              <Text style={s.uploadBadgeText}>رفع ملف</Text>
+            </View>
+          </Pressable>
+        )}
 
         {/* Provider Info */}
         <View style={s.infoRow}>
@@ -285,33 +299,24 @@ export default function HomeScreen() {
             (!selectedFile || isTranscribing) && s.transcribeBtnDisabled,
           ]}
         >
-          {isTranscribing ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Feather name="zap" size={18} color="#fff" />
-          )}
-          <Text style={s.transcribeBtnText}>
-            {isTranscribing ? "جاري التفريغ..." : "بدء التفريغ"}
-          </Text>
+          <Feather name="zap" size={18} color="#fff" />
+          <Text style={s.transcribeBtnText}>بدء التفريغ</Text>
         </Pressable>
 
-        {/* Progress */}
-        {progress && isTranscribing && (
+        {/* Progress bar — only shown for multi-chunk files */}
+        {progress && isTranscribing && progress.totalChunks > 1 && (
           <View style={s.progressCard}>
             <View style={s.progressHeader}>
-              <Text style={s.progressMsg}>{progress.message}</Text>
               <Text style={s.progressPct}>{progress.percent}%</Text>
+              <Text style={s.progressChunks}>
+                الجزء {progress.currentChunk} من {progress.totalChunks}
+              </Text>
             </View>
             <View style={s.progressTrack}>
               <Animated.View
                 style={[s.progressFill, { width: progressBarWidth }]}
               />
             </View>
-            {progress.totalChunks > 1 && (
-              <Text style={s.progressSub}>
-                الجزء {progress.currentChunk} من {progress.totalChunks}
-              </Text>
-            )}
           </View>
         )}
 
@@ -541,20 +546,16 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
       justifyContent: "space-between",
       alignItems: "center",
     },
-    progressMsg: {
-      fontSize: 14,
-      color: colors.text,
-      fontFamily: "Inter_500Medium",
-      fontWeight: "500" as const,
-      flex: 1,
-      textAlign: "right",
-    },
     progressPct: {
       fontSize: 13,
       color: colors.primary,
       fontFamily: "Inter_600SemiBold",
       fontWeight: "600" as const,
-      marginLeft: 8,
+    },
+    progressChunks: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_400Regular",
     },
     progressTrack: {
       height: 6,
@@ -567,11 +568,30 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
       borderRadius: 3,
       backgroundColor: colors.primary,
     },
-    progressSub: {
+    waveformZone: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderColor: colors.primary + "44",
+      padding: 32,
+      alignItems: "center",
+      gap: 16,
+      minHeight: 160,
+      justifyContent: "center",
+    },
+    waveformTitle: {
+      fontSize: 15,
+      fontWeight: "500" as const,
+      color: colors.text,
+      fontFamily: "Inter_500Medium",
+      textAlign: "center",
+    },
+    waveformSub: {
       fontSize: 12,
       color: colors.mutedForeground,
       fontFamily: "Inter_400Regular",
-      textAlign: "right",
+      textAlign: "center",
+      maxWidth: 220,
     },
     resultCard: {
       backgroundColor: colors.card,
