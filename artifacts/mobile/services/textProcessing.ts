@@ -123,15 +123,23 @@ async function callProvider(
   });
 
   if (!response.ok) {
-    let errMsg = `خطأ ${response.status} من ${meta.name}`;
+    let apiMsg = "";
     try {
       const body = await response.text();
       const parsed = JSON.parse(body);
-      errMsg =
-        parsed?.error?.message ||
-        parsed?.message ||
-        errMsg;
+      apiMsg = parsed?.error?.message || parsed?.message || "";
     } catch {}
+
+    let errMsg: string;
+    if (response.status === 429) {
+      errMsg = `تجاوزت الحد المجاني لـ ${meta.name}. انتظر دقيقة ثم أعد المحاولة، أو اختر مزوداً آخر من إعدادات ورقة العمل.`;
+    } else if (response.status === 401 || response.status === 403) {
+      errMsg = `مفتاح API لـ ${meta.name} غير صحيح أو منتهي الصلاحية. تحقق منه في إعدادات ورقة العمل.`;
+    } else if (response.status === 500 || response.status === 503) {
+      errMsg = `خدمة ${meta.name} غير متاحة حالياً. أعد المحاولة بعد لحظات.`;
+    } else {
+      errMsg = apiMsg || `خطأ ${response.status} من ${meta.name}`;
+    }
     throw new Error(errMsg);
   }
 
