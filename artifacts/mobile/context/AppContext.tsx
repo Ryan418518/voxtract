@@ -7,6 +7,8 @@ import React, {
   useState,
 } from "react";
 
+// ── Transcription settings ────────────────────────────────────────────────────
+
 export type Provider = "groq" | "openai" | "custom";
 
 export interface Settings {
@@ -35,29 +37,130 @@ const PROVIDER_URLS: Record<Provider, string> = {
   custom: "",
 };
 
+// ── Worksheet AI settings ─────────────────────────────────────────────────────
+
+export type WorksheetProvider = "gemini" | "openrouter" | "groq" | "mistral";
+export type WorksheetOp = "correct" | "organize" | "summarize";
+
+export interface WorksheetProviderMeta {
+  id: WorksheetProvider;
+  name: string;
+  tagline: string;
+  freeNote: string;
+  keyLink: string;
+  keyLinkLabel: string;
+  baseUrl: string;
+  defaultModel: string;
+  /** Max safe chars per request (0 = unlimited / very large context) */
+  chunkChars: number;
+}
+
+export const WORKSHEET_PROVIDERS: WorksheetProviderMeta[] = [
+  {
+    id: "gemini",
+    name: "Google Gemini",
+    tagline: "Google AI Studio",
+    freeNote: "مجاني — سياق 1,000,000 رمز",
+    keyLink: "https://aistudio.google.com/apikey",
+    keyLinkLabel: "احصل على مفتاح مجاني من AI Studio",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    defaultModel: "gemini-2.0-flash",
+    chunkChars: 0,
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    tagline: "نماذج مجانية متعددة",
+    freeNote: "مجاني — gemini-2.0-flash-exp:free",
+    keyLink: "https://openrouter.ai/keys",
+    keyLinkLabel: "احصل على مفتاح مجاني من OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    defaultModel: "google/gemini-2.0-flash-exp:free",
+    chunkChars: 0,
+  },
+  {
+    id: "groq",
+    name: "Groq",
+    tagline: "سريع جداً — مجاني",
+    freeNote: "مجاني — يعالج النصوص الطويلة بالتقطيع",
+    keyLink: "https://console.groq.com/keys",
+    keyLinkLabel: "احصل على مفتاح مجاني من Groq",
+    baseUrl: "https://api.groq.com/openai/v1",
+    defaultModel: "llama-3.3-70b-versatile",
+    chunkChars: 7000,
+  },
+  {
+    id: "mistral",
+    name: "Mistral AI",
+    tagline: "Mistral API",
+    freeNote: "مجاني — سياق 128,000 رمز",
+    keyLink: "https://console.mistral.ai/api-keys",
+    keyLinkLabel: "احصل على مفتاح مجاني من Mistral",
+    baseUrl: "https://api.mistral.ai/v1",
+    defaultModel: "mistral-small-latest",
+    chunkChars: 0,
+  },
+];
+
+export interface WorksheetSettings {
+  apiKeys: Record<WorksheetProvider, string>;
+  correctProvider: WorksheetProvider;
+  organizeProvider: WorksheetProvider;
+  summarizeProvider: WorksheetProvider;
+}
+
+const DEFAULT_WORKSHEET: WorksheetSettings = {
+  apiKeys: { gemini: "", openrouter: "", groq: "", mistral: "" },
+  correctProvider: "gemini",
+  organizeProvider: "gemini",
+  summarizeProvider: "gemini",
+};
+
+// ── Storage keys ──────────────────────────────────────────────────────────────
+
 const STORAGE_KEY = "@voxtract_settings";
+const WORKSHEET_STORAGE_KEY = "@voxtract_worksheet_ai";
+
+// ── Context ───────────────────────────────────────────────────────────────────
 
 interface AppContextValue {
   settings: Settings;
   updateSettings: (partial: Partial<Settings>) => Promise<void>;
   providerModels: typeof PROVIDER_MODELS;
   getApiUrl: () => string;
+  worksheetSettings: WorksheetSettings;
+  updateWorksheetSettings: (partial: Partial<WorksheetSettings>) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [worksheetSettings, setWorksheetSettings] =
+    useState<WorksheetSettings>(DEFAULT_WORKSHEET);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) {
-        try {
-          const saved: Partial<Settings> = JSON.parse(raw);
-          setSettings((prev) => ({ ...prev, ...saved }));
-        } catch {}
+    AsyncStorage.multiGet([STORAGE_KEY, WORKSHEET_STORAGE_KEY]).then(
+      (pairs) => {
+        const [transcRaw, worksheetRaw] = pairs.map((p) => p[1]);
+        if (transcRaw) {
+          try {
+            const saved: Partial<Settings> = JSON.parse(transcRaw);
+            setSettings((prev) => ({ ...prev, ...saved }));
+          } catch {}
+        }
+        if (worksheetRaw) {
+          try {
+            const saved: Partial<WorksheetSettings> = JSON.parse(worksheetRaw);
+            setWorksheetSettings((prev) => ({
+              ...prev,
+              ...saved,
+              apiKeys: { ...prev.apiKeys, ...saved.apiKeys },
+            }));
+          } catch {}
+        }
       }
-    });
+    );
   }, []);
 
   const updateSettings = useCallback(async (partial: Partial<Settings>) => {
@@ -68,6 +171,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const updateWorksheetSettings = useCallback(
+    async (partial: Partial<WorksheetSettings>) => {
+      setWorksheetSettings((prev) => {
+        const next: WorksheetSettings = {
+          ...prev,
+          ...partial,
+          apiKeys: { ...prev.apiKeys, ...(partial.apiKeys ?? {}) },
+        };
+        AsyncStorage.setItem(WORKSHEET_STORAGE_KEY, JSON.stringify(next));
+        return next;
+      });
+    },
+    []
+  );
+
   const getApiUrl = useCallback((): string => {
     if (settings.provider === "custom") return settings.customUrl;
     return PROVIDER_URLS[settings.provider];
@@ -75,7 +193,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ settings, updateSettings, providerModels: PROVIDER_MODELS, getApiUrl }}
+      value={{
+        settings,
+        updateSettings,
+        providerModels: PROVIDER_MODELS,
+        getApiUrl,
+        worksheetSettings,
+        updateWorksheetSettings,
+      }}
     >
       {children}
     </AppContext.Provider>

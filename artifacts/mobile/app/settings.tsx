@@ -254,6 +254,20 @@ export default function SettingsScreen() {
           ))}
         </View>
 
+        {/* Worksheet AI Settings link */}
+        <Text style={s.sectionLabel}>ورقة العمل</Text>
+        <Pressable
+          onPress={() => router.push("/worksheet-settings")}
+          style={({ pressed }) => [s.card, s.linkCard, pressed && s.rowPressed]}
+        >
+          <Feather name="edit-3" size={18} color={colors.primary} />
+          <View style={s.linkCardInfo}>
+            <Text style={s.linkCardTitle}>إعدادات ذكاء اصطناعي ورقة العمل</Text>
+            <Text style={s.linkCardDesc}>Gemini · OpenRouter · Groq · Mistral</Text>
+          </View>
+          <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
+        </Pressable>
+
         {/* Save */}
         <Pressable
           onPress={handleSave}
@@ -433,6 +447,29 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
       color: colors.primary,
       fontFamily: "Inter_500Medium",
       fontWeight: "500" as const,
+    },
+    linkCard: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      padding: 16,
+      gap: 12,
+    },
+    linkCardInfo: {
+      flex: 1,
+      alignItems: "flex-end" as const,
+    },
+    linkCardTitle: {
+      fontSize: 14,
+      fontWeight: "600" as const,
+      color: colors.text,
+      fontFamily: "Inter_600SemiBold",
+      textAlign: "right" as const,
+    },
+    linkCardDesc: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_400Regular",
+      marginTop: 2,
     },
     saveBtn: {
       flexDirection: "row",

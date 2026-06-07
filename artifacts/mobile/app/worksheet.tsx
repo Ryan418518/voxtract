@@ -20,10 +20,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Feather } from "@expo/vector-icons";
 
-import { useApp } from "@/context/AppContext";
+import {
+  WORKSHEET_PROVIDERS,
+  WorksheetOp,
+  useApp,
+} from "@/context/AppContext";
 import { useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
-import { TextProcessingOp, processText } from "@/services/textProcessing";
+import { processText } from "@/services/textProcessing";
 import { worksheetStore } from "@/stores/worksheetStore";
 import { audioStem, uniqueTxtUri } from "@/utils/fileName";
 
@@ -35,7 +39,7 @@ interface UndoState {
 }
 
 const AI_BUTTONS: Array<{
-  op: TextProcessingOp;
+  op: WorksheetOp;
   icon: string;
   label: string;
   desc: string;
@@ -67,7 +71,7 @@ const AI_BUTTONS: Array<{
 export default function WorksheetScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { settings } = useApp();
+  const { settings, worksheetSettings } = useApp();
   const { addEntry } = useHistory();
 
   const initialData = worksheetStore.get();
@@ -78,7 +82,7 @@ export default function WorksheetScreen() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
   const [text, setText] = useState(initialData?.text ?? "");
-  const [processing, setProcessing] = useState<TextProcessingOp | null>(null);
+  const [processing, setProcessing] = useState<WorksheetOp | null>(null);
   const [chunkProgress, setChunkProgress] = useState<{
     current: number;
     total: number;
@@ -126,15 +130,34 @@ export default function WorksheetScreen() {
     Haptics.selectionAsync();
   }, [draftTitle, title]);
 
+  const getOpConfig = useCallback(
+    (op: WorksheetOp) => {
+      const providerKey = `${op}Provider` as
+        | "correctProvider"
+        | "organizeProvider"
+        | "summarizeProvider";
+      const providerId = worksheetSettings[providerKey];
+      const apiKey = worksheetSettings.apiKeys[providerId];
+      const meta = WORKSHEET_PROVIDERS.find((p) => p.id === providerId);
+      return { providerId, apiKey, meta };
+    },
+    [worksheetSettings]
+  );
+
   const handleAI = useCallback(
-    async (op: TextProcessingOp) => {
-      if (!settings.apiKey.trim()) {
+    async (op: WorksheetOp) => {
+      const { providerId, apiKey, meta } = getOpConfig(op);
+
+      if (!apiKey.trim()) {
         Alert.alert(
           "مفتاح API مطلوب",
-          "الرجاء إضافة مفتاح Groq API في الإعدادات.",
+          `الرجاء إضافة مفتاح ${meta?.name ?? providerId} في إعدادات ورقة العمل.`,
           [
             { text: "إلغاء", style: "cancel" },
-            { text: "الإعدادات", onPress: () => router.push("/settings") },
+            {
+              text: "الإعدادات",
+              onPress: () => router.push("/worksheet-settings"),
+            },
           ]
         );
         return;
@@ -152,7 +175,8 @@ export default function WorksheetScreen() {
         const result = await processText(
           text,
           op,
-          settings.apiKey.trim(),
+          providerId,
+          apiKey.trim(),
           (chunkIndex, totalChunks) => {
             if (totalChunks > 1) {
               setChunkProgress({ current: chunkIndex + 1, total: totalChunks });
@@ -171,7 +195,7 @@ export default function WorksheetScreen() {
         setChunkProgress(null);
       }
     },
-    [text, title, settings.apiKey, pushUndo]
+    [text, title, getOpConfig, pushUndo]
   );
 
   const handleCopy = useCallback(async () => {
@@ -280,6 +304,10 @@ export default function WorksheetScreen() {
         {AI_BUTTONS.map((btn) => {
           const isActive = processing === btn.op;
           const isDisabled = processing !== null;
+          const { meta } = getOpConfig(btn.op);
+          const providerLabel = meta
+            ? meta.name.replace("Google ", "").replace(" AI", "")
+            : "";
           return (
             <Pressable
               key={btn.op}
@@ -304,7 +332,7 @@ export default function WorksheetScreen() {
                 <Text style={s.aiBtnDesc}>
                   {isActive && chunkProgress && chunkProgress.total > 1
                     ? `جزء ${chunkProgress.current} من ${chunkProgress.total}`
-                    : btn.desc}
+                    : providerLabel}
                 </Text>
               </View>
             </Pressable>

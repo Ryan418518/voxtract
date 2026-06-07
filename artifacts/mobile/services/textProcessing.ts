@@ -1,14 +1,12 @@
 import { fetch } from "expo/fetch";
 
-const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = "llama-3.3-70b-versatile";
+import {
+  WORKSHEET_PROVIDERS,
+  WorksheetOp,
+  WorksheetProvider,
+} from "@/context/AppContext";
 
-// Safe chunk size for Groq free tier (12k TPM limit).
-// Arabic text ≈ 0.7 tokens/char → 7000 chars ≈ 4900 tokens input,
-// leaving ~7000 tokens headroom for system prompt + output.
-const CHUNK_CHARS = 7000;
-
-export type TextProcessingOp = "correct" | "organize" | "summarize";
+export type TextProcessingOp = WorksheetOp;
 
 // ── System prompts ────────────────────────────────────────────────────────────
 
@@ -30,8 +28,6 @@ const ORGANIZE_SYSTEM = `أنت محرر محترف متخصص في تنظيم �
 ٥. احتفظ بكامل المحتوى مع إصلاح التنسيق فقط.
 ٦. أعد النص المنظَّم فقط بدون تعليق.`;
 
-// Summarize prompt has two variants: full (for single-chunk or first chunk)
-// and partial (for subsequent chunks in a multi-chunk flow).
 const SUMMARIZE_SYSTEM_FULL = `أنت محرر احترافي للنصوص العربية. هيكل النص التالي وأضف تلخيصاً مدمجاً.
 القواعد الصارمة:
 ١. ابدأ بملخص تنفيذي موجز لا يتجاوز خمس جمل.
@@ -51,31 +47,26 @@ const SUMMARIZE_SYSTEM_PARTIAL = `أنت محرر احترافي للنصوص ا
 
 // ── Chunk helpers ─────────────────────────────────────────────────────────────
 
-function splitIntoChunks(text: string): string[] {
-  if (text.length <= CHUNK_CHARS) return [text];
+function splitIntoChunks(text: string, chunkChars: number): string[] {
+  if (chunkChars === 0 || text.length <= chunkChars) return [text];
 
   const chunks: string[] = [];
   let pos = 0;
 
   while (pos < text.length) {
-    let end = Math.min(pos + CHUNK_CHARS, text.length);
+    let end = Math.min(pos + chunkChars, text.length);
 
     if (end < text.length) {
-      // Prefer to break at a double newline (paragraph boundary)
       const paraBreak = text.lastIndexOf("\n\n", end);
-      if (paraBreak > pos + CHUNK_CHARS / 3) {
+      if (paraBreak > pos + chunkChars / 3) {
         end = paraBreak + 2;
       } else {
-        // Fall back to a single newline
         const lineBreak = text.lastIndexOf("\n", end);
-        if (lineBreak > pos + CHUNK_CHARS / 3) {
+        if (lineBreak > pos + chunkChars / 3) {
           end = lineBreak + 1;
         } else {
-          // Fall back to last period (Arabic or Latin)
-          const periodAr = text.lastIndexOf(".", end);
-          const periodLat = text.lastIndexOf(".", end);
-          const period = Math.max(periodAr, periodLat);
-          if (period > pos + CHUNK_CHARS / 3) {
+          const period = text.lastIndexOf(".", end);
+          if (period > pos + chunkChars / 3) {
             end = period + 1;
           }
         }
@@ -90,21 +81,39 @@ function splitIntoChunks(text: string): string[] {
   return chunks;
 }
 
-// ── Single-chunk API call ─────────────────────────────────────────────────────
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
-async function callGroq(
+// ── Single API call ───────────────────────────────────────────────────────────
+
+async function callProvider(
+  provider: WorksheetProvider,
+  apiKey: string,
   systemPrompt: string,
-  userContent: string,
-  apiKey: string
+  userContent: string
 ): Promise<string> {
-  const response = await fetch(GROQ_CHAT_URL, {
+  const meta = WORKSHEET_PROVIDERS.find((p) => p.id === provider);
+  if (!meta) throw new Error(`مزود غير معروف: ${provider}`);
+
+  const url = `${meta.baseUrl}/chat/completions`;
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+
+  // OpenRouter requires HTTP-Referer and X-Title headers
+  if (provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://voxtract.app";
+    headers["X-Title"] = "Voxtract";
+  }
+
+  const response = await fetch(url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
-      model: MODEL,
+      model: meta.defaultModel,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
@@ -115,11 +124,14 @@ async function callGroq(
   });
 
   if (!response.ok) {
-    let errMsg = `خطأ في الخادم ${response.status}`;
+    let errMsg = `خطأ ${response.status} من ${meta.name}`;
     try {
       const body = await response.text();
       const parsed = JSON.parse(body);
-      errMsg = parsed?.error?.message || parsed?.message || errMsg;
+      errMsg =
+        parsed?.error?.message ||
+        parsed?.message ||
+        errMsg;
     } catch {}
     throw new Error(errMsg);
   }
@@ -133,29 +145,27 @@ async function callGroq(
   return result;
 }
 
-// Small delay between chunk requests to avoid hitting rate limits
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function processText(
   text: string,
   operation: TextProcessingOp,
+  provider: WorksheetProvider,
   apiKey: string,
   onProgress?: (chunkIndex: number, totalChunks: number) => void
 ): Promise<string> {
-  const chunks = splitIntoChunks(text);
+  const meta = WORKSHEET_PROVIDERS.find((p) => p.id === provider);
+  if (!meta) throw new Error(`مزود غير معروف: ${provider}`);
+
+  const chunks = splitIntoChunks(text, meta.chunkChars);
   const total = chunks.length;
 
   if (operation === "correct") {
     const results: string[] = [];
     for (let i = 0; i < chunks.length; i++) {
       onProgress?.(i, total);
-      if (i > 0) await sleep(800); // brief pause between requests
-      const result = await callGroq(CORRECT_SYSTEM, chunks[i], apiKey);
-      results.push(result);
+      if (i > 0) await sleep(800);
+      results.push(await callProvider(provider, apiKey, CORRECT_SYSTEM, chunks[i]));
     }
     return results.join("\n\n");
   }
@@ -165,23 +175,18 @@ export async function processText(
     for (let i = 0; i < chunks.length; i++) {
       onProgress?.(i, total);
       if (i > 0) await sleep(800);
-      const result = await callGroq(ORGANIZE_SYSTEM, chunks[i], apiKey);
-      results.push(result);
+      results.push(await callProvider(provider, apiKey, ORGANIZE_SYSTEM, chunks[i]));
     }
     return results.join("\n\n");
   }
 
-  // summarize: first chunk gets the full prompt (includes executive summary),
-  // subsequent chunks get the partial prompt (structure only, no intro)
   if (operation === "summarize") {
     const results: string[] = [];
     for (let i = 0; i < chunks.length; i++) {
       onProgress?.(i, total);
       if (i > 0) await sleep(800);
-      const systemPrompt =
-        i === 0 ? SUMMARIZE_SYSTEM_FULL : SUMMARIZE_SYSTEM_PARTIAL;
-      const result = await callGroq(systemPrompt, chunks[i], apiKey);
-      results.push(result);
+      const system = i === 0 ? SUMMARIZE_SYSTEM_FULL : SUMMARIZE_SYSTEM_PARTIAL;
+      results.push(await callProvider(provider, apiKey, system, chunks[i]));
     }
     return results.join("\n\n---\n\n");
   }
