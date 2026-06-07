@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  ScrollView as HScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 
 import {
+  OPENROUTER_FREE_MODELS,
   WORKSHEET_PROVIDERS,
   WorksheetOp,
   WorksheetProvider,
@@ -208,6 +210,40 @@ export default function WorksheetSettingsScreen() {
                 </Pressable>
               </View>
             </View>
+
+            {/* OpenRouter model picker */}
+            {p.id === "openrouter" && (
+              <View style={s.modelPickerWrapper}>
+                <Text style={s.modelPickerLabel}>النموذج</Text>
+                <HScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.modelPillRow}
+                >
+                  {OPENROUTER_FREE_MODELS.map((m) => {
+                    const active = worksheetSettings.openrouterModel === m.id;
+                    return (
+                      <Pressable
+                        key={m.id}
+                        onPress={async () => {
+                          Haptics.selectionAsync();
+                          await updateWorksheetSettings({ openrouterModel: m.id });
+                        }}
+                        style={({ pressed }) => [
+                          s.modelPill,
+                          active && s.modelPillActive,
+                          pressed && s.pillPressed,
+                        ]}
+                      >
+                        <Text style={[s.modelPillText, active && s.modelPillTextActive]}>
+                          {m.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </HScrollView>
+              </View>
+            )}
 
             {/* Get key link */}
             <Pressable
@@ -432,6 +468,47 @@ function makeStyles(
       fontSize: 12,
       color: colors.primary,
       fontFamily: "Inter_400Regular",
+    },
+
+    // Model picker (OpenRouter)
+    modelPickerWrapper: {
+      marginTop: 8,
+      gap: 6,
+    },
+    modelPickerLabel: {
+      fontSize: 11,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_500Medium",
+      fontWeight: "500" as const,
+      textAlign: "right",
+    },
+    modelPillRow: {
+      flexDirection: "row",
+      gap: 6,
+      paddingVertical: 2,
+    },
+    modelPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    modelPillActive: {
+      borderColor: "#F59E0B",
+      backgroundColor: "#F59E0B18",
+    },
+    modelPillText: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_500Medium",
+      fontWeight: "500" as const,
+    },
+    modelPillTextActive: {
+      color: "#F59E0B",
+      fontWeight: "600" as const,
+      fontFamily: "Inter_600SemiBold",
     },
 
     // Save

@@ -90,7 +90,8 @@ async function callProvider(
   provider: WorksheetProvider,
   apiKey: string,
   systemPrompt: string,
-  userContent: string
+  userContent: string,
+  customModel?: string
 ): Promise<string> {
   const meta = WORKSHEET_PROVIDERS.find((p) => p.id === provider);
   if (!meta) throw new Error(`مزود غير معروف: ${provider}`);
@@ -112,7 +113,7 @@ async function callProvider(
     method: "POST",
     headers,
     body: JSON.stringify({
-      model: meta.defaultModel,
+      model: customModel ?? meta.defaultModel,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
@@ -159,7 +160,8 @@ export async function processText(
   operation: TextProcessingOp,
   provider: WorksheetProvider,
   apiKey: string,
-  onProgress?: (chunkIndex: number, totalChunks: number) => void
+  onProgress?: (chunkIndex: number, totalChunks: number) => void,
+  customModel?: string
 ): Promise<string> {
   const meta = WORKSHEET_PROVIDERS.find((p) => p.id === provider);
   if (!meta) throw new Error(`مزود غير معروف: ${provider}`);
@@ -172,7 +174,7 @@ export async function processText(
     for (let i = 0; i < chunks.length; i++) {
       onProgress?.(i, total);
       if (i > 0) await sleep(800);
-      results.push(await callProvider(provider, apiKey, CORRECT_SYSTEM, chunks[i]));
+      results.push(await callProvider(provider, apiKey, CORRECT_SYSTEM, chunks[i], customModel));
     }
     return results.join("\n\n");
   }
@@ -182,7 +184,7 @@ export async function processText(
     for (let i = 0; i < chunks.length; i++) {
       onProgress?.(i, total);
       if (i > 0) await sleep(800);
-      results.push(await callProvider(provider, apiKey, ORGANIZE_SYSTEM, chunks[i]));
+      results.push(await callProvider(provider, apiKey, ORGANIZE_SYSTEM, chunks[i], customModel));
     }
     return results.join("\n\n");
   }
@@ -193,7 +195,7 @@ export async function processText(
       onProgress?.(i, total);
       if (i > 0) await sleep(800);
       const system = i === 0 ? SUMMARIZE_SYSTEM_FULL : SUMMARIZE_SYSTEM_PARTIAL;
-      results.push(await callProvider(provider, apiKey, system, chunks[i]));
+      results.push(await callProvider(provider, apiKey, system, chunks[i], customModel));
     }
     return results.join("\n\n---\n\n");
   }

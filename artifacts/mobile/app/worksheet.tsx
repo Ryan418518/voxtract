@@ -172,6 +172,11 @@ export default function WorksheetScreen() {
       setChunkProgress(null);
 
       try {
+        const customModel =
+          providerId === "openrouter"
+            ? worksheetSettings.openrouterModel
+            : undefined;
+
         const result = await processText(
           text,
           op,
@@ -181,7 +186,8 @@ export default function WorksheetScreen() {
             if (totalChunks > 1) {
               setChunkProgress({ current: chunkIndex + 1, total: totalChunks });
             }
-          }
+          },
+          customModel
         );
         setText(result);
         setChunkProgress(null);

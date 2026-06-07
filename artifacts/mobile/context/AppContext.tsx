@@ -102,11 +102,26 @@ export const WORKSHEET_PROVIDERS: WorksheetProviderMeta[] = [
   },
 ];
 
+export interface OpenRouterModel {
+  id: string;
+  label: string;
+}
+
+export const OPENROUTER_FREE_MODELS: OpenRouterModel[] = [
+  { id: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B" },
+  { id: "google/gemma-3-27b-it:free",              label: "Gemma 3 27B" },
+  { id: "deepseek/deepseek-r1:free",               label: "DeepSeek R1" },
+  { id: "mistralai/mistral-7b-instruct:free",      label: "Mistral 7B" },
+  { id: "qwen/qwen3-30b-a3b:free",                 label: "Qwen 3 30B" },
+  { id: "microsoft/phi-4-reasoning:free",          label: "Phi-4" },
+];
+
 export interface WorksheetSettings {
   apiKeys: Record<WorksheetProvider, string>;
   correctProvider: WorksheetProvider;
   organizeProvider: WorksheetProvider;
   summarizeProvider: WorksheetProvider;
+  openrouterModel: string;
 }
 
 const DEFAULT_WORKSHEET: WorksheetSettings = {
@@ -114,6 +129,7 @@ const DEFAULT_WORKSHEET: WorksheetSettings = {
   correctProvider: "gemini",
   organizeProvider: "gemini",
   summarizeProvider: "gemini",
+  openrouterModel: "meta-llama/llama-3.3-70b-instruct:free",
 };
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
