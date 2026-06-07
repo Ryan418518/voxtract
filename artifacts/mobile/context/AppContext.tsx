@@ -71,11 +71,11 @@ export const WORKSHEET_PROVIDERS: WorksheetProviderMeta[] = [
     id: "openrouter",
     name: "OpenRouter",
     tagline: "نماذج مجانية متعددة",
-    freeNote: "مجاني — gemini-2.0-flash-exp:free",
+    freeNote: "مجاني — llama-3.3-70b-instruct:free",
     keyLink: "https://openrouter.ai/keys",
     keyLinkLabel: "احصل على مفتاح مجاني من OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
-    defaultModel: "google/gemini-2.0-flash-exp:free",
+    defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
     chunkChars: 0,
   },
   {
