@@ -20,7 +20,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0B0714"
-      }
+      },
+      "package": "com.voxtract.app"
     },
     "web": {
       "favicon": "./assets/images/icon.png"
