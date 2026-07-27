@@ -7,9 +7,6 @@
       "android": {
         "buildType": "apk",
         "credentialsSource": "local"
-      },
-      "env": {
-        "EXPO_PUBLIC_DOMAIN": ""
       }
     },
     "production": {
