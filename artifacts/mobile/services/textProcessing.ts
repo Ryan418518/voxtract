@@ -112,21 +112,38 @@ async function callProvider(
     headers["X-Title"] = "Voxtract";
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: customModel ?? meta.defaultModel,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
-      ],
-      temperature: 0.15,
-      max_tokens: 8192,
-    }),
-  });
+  const requestedModel = customModel ?? meta.defaultModel;
+  const models =
+    provider === "gemini"
+      ? [requestedModel, "gemini-3.6-flash", "gemini-3.5-flash-lite"].filter(
+          (model, index, all) => all.indexOf(model) === index
+        )
+      : [requestedModel];
 
-  if (!response.ok) {
+  for (let attempt = 0; attempt < models.length; attempt++) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: models[attempt],
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.15,
+        max_tokens: 8192,
+      }),
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as {
+        choices: Array<{ message: { content: string } }>;
+      };
+      const result = data.choices[0]?.message?.content?.trim();
+      if (!result) throw new Error("لم يُرجع النموذج أي نتيجة");
+      return result;
+    }
+
     let apiMsg = "";
     try {
       const body = await response.text();
@@ -134,29 +151,30 @@ async function callProvider(
       apiMsg = parsed?.error?.message || parsed?.message || "";
     } catch {}
 
+    // Google can temporarily return 503 for a busy model. Retry with a
+    // short backoff and then use a stable fallback model automatically.
+    if (provider === "gemini" && response.status === 503 && attempt < models.length - 1) {
+      await sleep(1500 * (attempt + 1));
+      continue;
+    }
+
     let errMsg: string;
     if (response.status === 429) {
       errMsg = `تجاوزت الحد المجاني لـ ${meta.name}. انتظر دقيقة ثم أعد المحاولة، أو اختر مزوداً آخر من إعدادات ورقة العمل.`;
     } else if (response.status === 401 || response.status === 403) {
       errMsg = `مفتاح API لـ ${meta.name} غير صحيح أو منتهي الصلاحية. تحقق منه في إعدادات ورقة العمل.`;
-    } else if (response.status === 500 || response.status === 503) {
-      errMsg = `خدمة ${meta.name} غير متاحة حالياً. أعد المحاولة بعد لحظات.`;
     } else if (provider === "gemini" && response.status === 404) {
       errMsg =
         "نموذج Google Gemini غير متاح حالياً. حدّث التطبيق إلى آخر نسخة ثم أعد المحاولة.";
+    } else if (response.status === 500 || response.status === 503) {
+      errMsg = `خدمة ${meta.name} غير متاحة حالياً. أعد المحاولة بعد لحظات.`;
     } else {
       errMsg = apiMsg || `خطأ ${response.status} من ${meta.name}`;
     }
     throw new Error(errMsg);
   }
 
-  const data = (await response.json()) as {
-    choices: Array<{ message: { content: string } }>;
-  };
-
-  const result = data.choices[0]?.message?.content?.trim();
-  if (!result) throw new Error("لم يُرجع النموذج أي نتيجة");
-  return result;
+  throw new Error("تعذر الاتصال بخدمة Google Gemini بعد عدة محاولات.");
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────

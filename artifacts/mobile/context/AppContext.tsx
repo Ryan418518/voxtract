@@ -67,7 +67,7 @@ export const WORKSHEET_PROVIDERS: WorksheetProviderMeta[] = [
     // Gemini 2.0 Flash is no longer available through the OpenAI-compatible
     // endpoint. Keep correction chunks below the output limit for long
     // transcriptions while preserving their original order.
-    defaultModel: "gemini-3.7-flash",
+    defaultModel: "gemini-3.6-flash",
     chunkChars: 12000,
   },
   {
