@@ -64,8 +64,11 @@ export const WORKSHEET_PROVIDERS: WorksheetProviderMeta[] = [
     keyLink: "https://aistudio.google.com/apikey",
     keyLinkLabel: "احصل على مفتاح مجاني من AI Studio",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    defaultModel: "gemini-2.0-flash",
-    chunkChars: 0,
+    // Gemini 2.0 Flash is no longer available through the OpenAI-compatible
+    // endpoint. Keep correction chunks below the output limit for long
+    // transcriptions while preserving their original order.
+    defaultModel: "gemini-3.7-flash",
+    chunkChars: 12000,
   },
   {
     id: "openrouter",

@@ -64,9 +64,12 @@ function splitIntoChunks(text: string, chunkChars: number): string[] {
         if (lineBreak > pos + chunkChars / 3) {
           end = lineBreak + 1;
         } else {
-          const period = text.lastIndexOf(".", end);
-          if (period > pos + chunkChars / 3) {
-            end = period + 1;
+          const sentenceEndings = [".", "!", "?", "؟", "؛", "。"];
+          const sentenceBreak = Math.max(
+            ...sentenceEndings.map((mark) => text.lastIndexOf(mark, end))
+          );
+          if (sentenceBreak > pos + chunkChars / 3) {
+            end = sentenceBreak + 1;
           }
         }
       }
@@ -138,6 +141,9 @@ async function callProvider(
       errMsg = `مفتاح API لـ ${meta.name} غير صحيح أو منتهي الصلاحية. تحقق منه في إعدادات ورقة العمل.`;
     } else if (response.status === 500 || response.status === 503) {
       errMsg = `خدمة ${meta.name} غير متاحة حالياً. أعد المحاولة بعد لحظات.`;
+    } else if (provider === "gemini" && response.status === 404) {
+      errMsg =
+        "نموذج Google Gemini غير متاح حالياً. حدّث التطبيق إلى آخر نسخة ثم أعد المحاولة.";
     } else {
       errMsg = apiMsg || `خطأ ${response.status} من ${meta.name}`;
     }
