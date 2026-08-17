@@ -109,14 +109,16 @@ export default function HomeScreen() {
 
     setIsTranscribing(true);
     setTranscription("");
+    setProgress(null);
     progressAnim.setValue(0);
 
-    const fileSize =
-      selectedFile.size > 0
-        ? selectedFile.size
-        : await getFileSizeFromUri(selectedFile.uri);
-
+    let fileSize = 0;
     try {
+      fileSize =
+        selectedFile.size > 0
+          ? selectedFile.size
+          : await getFileSizeFromUri(selectedFile.uri);
+
       const result = await transcribeAudio(
         {
           fileUri: selectedFile.uri,
@@ -131,6 +133,11 @@ export default function HomeScreen() {
           animateProgress(p.percent);
         }
       );
+      if (!result.trim()) {
+        throw new Error(
+          "لم يُرجع مزود الخدمة أي نص. تأكد من أن الملف يحتوي على صوت واضح ثم أعد المحاولة."
+        );
+      }
       setTranscription(result);
       await addEntry({
         text: result,

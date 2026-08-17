@@ -1,6 +1,7 @@
 import * as ExpoFileSystem from "expo-file-system/legacy";
 import { File } from "expo-file-system";
 import { fetch } from "expo/fetch";
+import { Platform } from "react-native";
 
 const CHUNK_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB per chunk
 
@@ -35,7 +36,11 @@ export async function transcribeAudio(
 ): Promise<string> {
   const { fileUri, fileName, fileSize, apiUrl, apiKey, model } = input;
   const ext = fileName.split(".").pop()?.toLowerCase() || "mp3";
-  const totalChunks = Math.ceil(fileSize / CHUNK_SIZE_BYTES);
+  // Some Android document providers do not return a file size even though
+  // the file URI is valid. Treat an unknown size as one complete upload
+  // instead of calculating zero chunks and silently returning an empty result.
+  const totalChunks =
+    fileSize > 0 ? Math.max(1, Math.ceil(fileSize / CHUNK_SIZE_BYTES)) : 1;
 
   onProgress({
     status: "preparing",
@@ -133,6 +138,33 @@ async function transcribeFile(
   apiKey: string,
   model: string
 ): Promise<string> {
+  const mimeType = getMimeType(fileName);
+
+  if (Platform.OS !== "web") {
+    // Native Android/iOS uploadAsync handles local file URIs more reliably
+    // than constructing a web FormData/File object from a content URI.
+    const result = await ExpoFileSystem.uploadAsync(apiUrl, fileUri, {
+      uploadType: ExpoFileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: "file",
+      mimeType,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      parameters: {
+        model,
+        language: "ar",
+        response_format: "text",
+      },
+    });
+
+    if (result.status < 200 || result.status >= 300) {
+      throw new Error(parseApiError(result.status, result.body));
+    }
+
+    return result.body.trim();
+  }
+
+  // Keep the browser preview working with the web fetch implementation.
   const formData = new FormData();
   const file = new File(fileUri);
   formData.append("file", file as unknown as Blob, fileName);
@@ -142,22 +174,46 @@ async function transcribeFile(
 
   const response = await fetch(apiUrl, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: { Authorization: `Bearer ${apiKey}` },
     body: formData,
   });
+  const body = await response.text();
+  if (!response.ok) throw new Error(parseApiError(response.status, body));
+  return body.trim();
+}
 
-  if (!response.ok) {
-    let errMsg = `خطأ ${response.status}`;
-    try {
-      const body = await response.text();
-      const parsed = JSON.parse(body);
-      errMsg = parsed?.error?.message || parsed?.message || body || errMsg;
-    } catch {}
-    throw new Error(errMsg);
+function parseApiError(status: number, body: string): string {
+  const fallback = `خطأ ${status}`;
+  if (!body.trim()) return fallback;
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { message?: string } | string;
+      message?: string;
+    };
+    const nested =
+      typeof parsed.error === "string" ? parsed.error : parsed.error?.message;
+    return nested || parsed.message || body || fallback;
+  } catch {
+    return body || fallback;
   }
+}
 
-  const text = await response.text();
-  return text.trim();
+function getMimeType(fileName: string): string {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "wav":
+      return "audio/wav";
+    case "m4a":
+      return "audio/mp4";
+    case "ogg":
+      return "audio/ogg";
+    case "flac":
+      return "audio/flac";
+    case "aac":
+      return "audio/aac";
+    case "webm":
+      return "audio/webm";
+    default:
+      return "audio/mpeg";
+  }
 }
