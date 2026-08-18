@@ -46,3 +46,26 @@
 ## التثبيت
 
 نزّل ملف `voxtract-preview.apk` إلى هاتف Android، فعّل السماح بالتثبيت من هذا المصدر عند طلب النظام، ثم افتح الملف واضغط **تثبيت**. هذا الإصدار APK وليس AAB، ولذلك مناسب للتثبيت المباشر والاختبار على أجهزة Android المتوافقة.
+
+## تحديث تقليل الحجم عبر Expo/EAS
+
+استجابة لملاحظة الحجم، أُضيفت إعدادات `expo-build-properties` إلى المستودع في commit `d35f99d`، وتضبط البناء على `arm64-v8a` فقط، مع ضغط حزمة JavaScript وتفعيل minification وresource shrinking في إصدار Release. تم تشغيل البناء عبر Expo/EAS فقط، دون تشغيل أي بناء Android محلي.
+
+| المقارنة | APK السابق | APK المصغر |
+|---|---:|---:|
+| الحجم | 96,242,591 بايت (91.78 MiB) | 32,645,538 بايت (31.13 MiB) |
+| المعماريات | armeabi-v7a وarm64-v8a وx86 وx86_64 | arm64-v8a فقط |
+| نسبة الخفض | — | 66.07% |
+| حالة EAS | `FINISHED` | `FINISHED` |
+
+| العنصر | الرابط |
+|---|---|
+| commit إعدادات الحجم | [d35f99d](https://github.com/Ryan418518/voxtract/commit/d35f99dfb16aa46d46cbfdcf5cc3714aed2872c0) |
+| بناء EAS المصغر | [4816b392](https://expo.dev/accounts/ryanamir418/projects/mobile/builds/4816b392-85b6-4a6a-950a-de0c9d4db183) |
+| تنزيل APK المصغر | [voxtract-slim-arm64.apk](https://expo.dev/artifacts/eas/LVIDGOgkqyhf9ebtD1uNjJkygFncggYAkxc57TWF4pQ.apk) |
+
+بما أن النسخة المصغرة تستهدف `arm64-v8a` فقط، فهي مناسبة لمعظم أجهزة Android الحديثة ذات 64-bit، لكنها لن تعمل على أجهزة ARM القديمة 32-bit أو بيئات x86 المحاكية. تم التحقق من أرشيف APK عبر `unzip -t`، وكانت بصمة SHA-256 هي:
+
+`a5f503caedea5c50f168a87ce58e8395a3d1f16cb69e95c970b75cc4f04eafc1`
+
+تم إلغاء وحذف توكن Expo المؤقت بعد اكتمال البناء.

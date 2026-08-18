@@ -71,3 +71,11 @@
 ## آخر تقدم Gradle
 
 بعد نحو 13 دقيقة، البناء ما زال `IN_PROGRESS` لكنه وصل إلى مهام متقدمة مثل `:app:validateSigningRelease` و`:app:writeReleaseAppMetadata` وعمليات lint وCMake النهائية. لا يظهر خطأ؛ السجل يعرض تحذيرات AndroidManifest وdeprecation فقط.
+
+## بناء APK المصغر عبر Expo فقط
+
+تم دفع إعدادات تقليل الحجم إلى commit `d35f99d` ثم إطلاق EAS build رقم `4816b392-85b6-4a6a-950a-de0c9d4db183` من مشروع `@ryanamir418/mobile`. لم يتم تشغيل أي Gradle أو APK محلي. حتى آخر تحديث نجح EAS في Install dependencies وPrebuild وBundle JavaScript، والبناء ينتقل إلى Gradle السحابي.
+
+## نتيجة APK المصغر
+
+اكتمل بناء EAS `4816b392-85b6-4a6a-950a-de0c9d4db183` بحالة `FINISHED` من commit `d35f99d`. تم تنزيل artifact من Expo دون تشغيل بناء محلي. الملف الناتج `voxtract-slim-arm64.apk` حجمه `32,645,538` بايت، ويحتوي على ABI واحد فقط هو `arm64-v8a`.
