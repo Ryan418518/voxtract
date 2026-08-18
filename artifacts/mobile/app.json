@@ -39,6 +39,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "715b00ed-c05f-4364-aadc-2ab3e925ca6e"
+      }
+    },
+    "owner": "ryanamir418"
   }
 }
