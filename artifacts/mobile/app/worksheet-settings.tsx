@@ -23,6 +23,7 @@ import {
   WorksheetOp,
   WorksheetProvider,
   WorksheetProviderMeta,
+  WorksheetOperationSettings,
   useApp,
 } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
@@ -51,6 +52,9 @@ export default function WorksheetSettingsScreen() {
     mistral: false,
   });
   const [saved, setSaved] = useState(false);
+  const [localOperations, setLocalOperations] = useState(
+    worksheetSettings.operations
+  );
 
   const handleSetKey = useCallback(
     (provider: WorksheetProvider, value: string) => {
@@ -63,6 +67,16 @@ export default function WorksheetSettingsScreen() {
     setShowKey((prev) => ({ ...prev, [provider]: !prev[provider] }));
   }, []);
 
+  const handleOperationField = useCallback(
+    (op: WorksheetOp, field: keyof WorksheetOperationSettings, value: string) => {
+      setLocalOperations((prev) => ({
+        ...prev,
+        [op]: { ...prev[op], [field]: value },
+      }));
+    },
+    []
+  );
+
   const handleOpProvider = useCallback(
     async (op: WorksheetOp, provider: WorksheetProvider) => {
       Haptics.selectionAsync();
@@ -74,14 +88,17 @@ export default function WorksheetSettingsScreen() {
   );
 
   const handleSave = useCallback(async () => {
-    await updateWorksheetSettings({ apiKeys: localKeys });
+    await updateWorksheetSettings({
+      apiKeys: localKeys,
+      operations: localOperations,
+    });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
       router.back();
     }, 1200);
-  }, [localKeys, updateWorksheetSettings]);
+  }, [localKeys, localOperations, updateWorksheetSettings]);
 
   const s = makeStyles(colors, insets);
   const isWeb = Platform.OS === "web";
@@ -166,6 +183,52 @@ export default function WorksheetSettingsScreen() {
             );
           })}
         </View>
+
+        {/* ── Editable operation labels and prompts ── */}
+        <Text style={s.sectionLabel}>عناوين وبرومبتات أزرار التحرير</Text>
+        <Text style={s.sectionHint}>
+          عدّل النص الظاهر على الزر والتعليمات التي يرسلها إلى مزود الذكاء الاصطناعي، ثم اضغط حفظ الإعدادات.
+        </Text>
+        {OPS.map((op) => {
+          const operation = localOperations[op];
+          return (
+            <View key={op} style={s.operationEditor}>
+              <View style={s.operationEditorHeader}>
+                <Feather
+                  name={OP_LABELS[op].icon as never}
+                  size={16}
+                  color={OP_LABELS[op].color}
+                />
+                <Text style={[s.operationEditorTitle, { color: OP_LABELS[op].color }]}>
+                  {OP_LABELS[op].label}
+                </Text>
+              </View>
+              <Text style={s.fieldLabel}>عنوان الزر الظاهر في ورقة العمل</Text>
+              <TextInput
+                style={s.editableInput}
+                value={operation.label}
+                onChangeText={(value) => handleOperationField(op, "label", value)}
+                placeholder={OP_LABELS[op].label}
+                placeholderTextColor={colors.mutedForeground}
+                textAlign="right"
+                returnKeyType="done"
+              />
+              <Text style={s.fieldLabel}>البرومت المخصص</Text>
+              <TextInput
+                style={[s.editableInput, s.promptInput]}
+                value={operation.prompt}
+                onChangeText={(value) => handleOperationField(op, "prompt", value)}
+                placeholder="اكتب تعليمات الذكاء الاصطناعي هنا..."
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+                textAlign="right"
+                textAlignVertical="top"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          );
+        })}
 
         {/* ── API keys per provider ── */}
         <Text style={s.sectionLabel}>مفاتيح API</Text>
@@ -344,6 +407,58 @@ function makeStyles(
       letterSpacing: 0.8,
       marginTop: 10,
       textAlign: "right",
+    },
+
+    sectionHint: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_400Regular",
+      lineHeight: 19,
+      textAlign: "right",
+      marginBottom: 2,
+    },
+    operationEditor: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 14,
+      gap: 8,
+    },
+    operationEditorHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: 7,
+      marginBottom: 2,
+    },
+    operationEditorTitle: {
+      fontSize: 14,
+      fontWeight: "600" as const,
+      fontFamily: "Inter_600SemiBold",
+    },
+    fieldLabel: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_500Medium",
+      textAlign: "right",
+      marginTop: 3,
+    },
+    editableInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      backgroundColor: colors.surface,
+      color: colors.text,
+      fontSize: 14,
+      fontFamily: "Inter_400Regular",
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      textAlign: "right",
+    },
+    promptInput: {
+      minHeight: 132,
+      lineHeight: 21,
     },
 
     card: {

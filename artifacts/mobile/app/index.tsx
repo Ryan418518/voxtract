@@ -3,7 +3,6 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ExpoFileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import * as Sharing from "expo-sharing";
 import React, { useCallback, useRef, useState } from "react";
 import {
   Alert,
@@ -24,7 +23,7 @@ import { useApp } from "@/context/AppContext";
 import { useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
 import { worksheetStore } from "@/stores/worksheetStore";
-import { audioStem, uniqueTxtUri } from "@/utils/fileName";
+import { shareTextFile, saveTextFileToFolder } from "@/utils/textExport";
 import {
   TranscriptionProgress,
   transcribeAudio,
@@ -165,34 +164,41 @@ export default function HomeScreen() {
     setTimeout(() => setCopyDone(false), 2000);
   }, [transcription]);
 
-  const handleShare = useCallback(async () => {
+  const handleExportError = useCallback((err: unknown) => {
+    const message = err instanceof Error ? err.message : "تعذر تصدير الملف.";
+    Alert.alert("تعذر التصدير", message);
+  }, []);
+
+  const handleExport = useCallback(() => {
     if (!transcription || !selectedFile) return;
     Haptics.selectionAsync();
-    const stem = audioStem(selectedFile.name);
-    const { uri: fileUri, name: fileName } = await uniqueTxtUri(stem);
-    await ExpoFileSystem.writeAsStringAsync(fileUri, transcription, {
-      encoding: ExpoFileSystem.EncodingType.UTF8,
-    });
+    const stem = audioStemForExport(selectedFile.name);
+    Alert.alert("تصدير النص", "اختر طريقة التصدير:", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حفظ في مجلد",
+        onPress: () => {
+          void saveTextFileToFolder(transcription, stem)
+            .then(({ fileName }) => {
+              Alert.alert("تم الحفظ", `تم حفظ الملف ${fileName} في المجلد الذي اخترته.`);
+            })
+            .catch(handleExportError);
+        },
+      },
+      {
+        text: "مشاركة مع تطبيق آخر",
+        onPress: () => {
+          void shareTextFile(transcription, stem).catch(handleExportError);
+        },
+      },
+    ]);
+  }, [transcription, selectedFile, handleExportError]);
 
-    if (Platform.OS === "web") {
-      const blob = new Blob([transcription], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else {
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: "text/plain",
-          dialogTitle: "تصدير النص",
-          UTI: "public.plain-text",
-        });
-      }
-    }
-  }, [transcription, selectedFile]);
+  const handleNewWorksheet = useCallback(() => {
+    Haptics.selectionAsync();
+    worksheetStore.set({ text: "", title: "مستند جديد" });
+    router.push("/worksheet");
+  }, []);
 
   const handleEdit = useCallback(() => {
     if (!transcription || !selectedFile) return;
@@ -230,6 +236,14 @@ export default function HomeScreen() {
           <Text style={s.logoText}>Voxtract</Text>
         </View>
         <View style={s.headerActions}>
+          <Pressable
+            onPress={handleNewWorksheet}
+            style={s.iconBtn}
+            hitSlop={10}
+            accessibilityLabel="فتح ورقة عمل جديدة"
+          >
+            <Feather name="file-plus" size={20} color={colors.mutedForeground} />
+          </Pressable>
           <Pressable
             onPress={() => router.push("/history")}
             style={s.iconBtn}
@@ -380,7 +394,7 @@ export default function HomeScreen() {
               </Pressable>
               <View style={s.actionDivider} />
               <Pressable
-                onPress={handleShare}
+                onPress={handleExport}
                 style={({ pressed }) => [
                   s.actionBtn,
                   pressed && s.actionBtnPressed,
@@ -416,6 +430,10 @@ async function getFileSizeFromUri(uri: string): Promise<number> {
     if (info.exists && "size" in info) return (info as { size: number }).size;
   } catch {}
   return 0;
+}
+
+function audioStemForExport(fileName: string): string {
+  return fileName.replace(/\.(mp3|mp4|m4a|wav|ogg|flac|aac|webm|mpeg|mpga|oga|opus|wma|amr)$/i, "").trim() || "transcription";
 }
 
 function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useColors>, insets: ReturnType<typeof import("react-native-safe-area-context").useSafeAreaInsets>) {

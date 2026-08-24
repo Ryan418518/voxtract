@@ -1,8 +1,6 @@
 import * as Clipboard from "expo-clipboard";
-import * as ExpoFileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import * as Sharing from "expo-sharing";
 import React, { useCallback, useState } from "react";
 import {
   Alert,
@@ -20,7 +18,8 @@ import { Feather } from "@expo/vector-icons";
 import { HistoryEntry, useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
 import { worksheetStore } from "@/stores/worksheetStore";
-import { audioStem, uniqueTxtUri } from "@/utils/fileName";
+import { audioStem } from "@/utils/fileName";
+import { shareTextFile, saveTextFileToFolder } from "@/utils/textExport";
 
 function formatDate(ms: number): string {
   const d = new Date(ms);
@@ -66,31 +65,33 @@ function HistoryCard({
     setTimeout(() => setCopyDone(false), 2000);
   }, [entry.text]);
 
-  const handleShare = useCallback(async () => {
+  const handleExport = useCallback(() => {
     Haptics.selectionAsync();
     const stem = audioStem(entry.fileName);
-    const { uri: fileUri, name: fileName } = await uniqueTxtUri(stem);
-    await ExpoFileSystem.writeAsStringAsync(fileUri, entry.text, {
-      encoding: ExpoFileSystem.EncodingType.UTF8,
-    });
-    if (Platform.OS === "web") {
-      const blob = new Blob([entry.text], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else {
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: "text/plain",
-          dialogTitle: "تصدير النص",
-          UTI: "public.plain-text",
-        });
-      }
-    }
+    const handleError = (err: unknown) => {
+      const message = err instanceof Error ? err.message : "تعذر تصدير الملف.";
+      Alert.alert("تعذر التصدير", message);
+    };
+
+    Alert.alert("تصدير النص", "اختر طريقة التصدير:", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حفظ في مجلد",
+        onPress: () => {
+          void saveTextFileToFolder(entry.text, stem)
+            .then(({ fileName }) => {
+              Alert.alert("تم الحفظ", `تم حفظ الملف ${fileName} في المجلد الذي اخترته.`);
+            })
+            .catch(handleError);
+        },
+      },
+      {
+        text: "مشاركة مع تطبيق آخر",
+        onPress: () => {
+          void shareTextFile(entry.text, stem).catch(handleError);
+        },
+      },
+    ]);
   }, [entry]);
 
   const handleEdit = useCallback(() => {
@@ -174,7 +175,8 @@ function HistoryCard({
         <View style={s.actionDivider} />
 
         <Pressable
-          onPress={handleShare}
+                        onPress={handleExport}
+
           style={({ pressed }) => [s.actionBtn, pressed && s.actionPressed]}
         >
           <Feather name="share-2" size={14} color={colors.mutedForeground} />

@@ -1,48 +1,13 @@
 import { fetch } from "expo/fetch";
 
 import {
+  DEFAULT_WORKSHEET_OPERATIONS,
   WORKSHEET_PROVIDERS,
   WorksheetOp,
   WorksheetProvider,
 } from "@/context/AppContext";
 
 export type TextProcessingOp = WorksheetOp;
-
-// ── System prompts ────────────────────────────────────────────────────────────
-
-const CORRECT_SYSTEM = `أنت مدقق لغوي محترف.
-
-قم بتصحيح جميع الأخطاء الإملائية والنحوية وعلامات الترقيم فقط.
-لا تغير المعنى أو الأسلوب.
-لا تختصر النص ولا تضف أي معلومات جديدة.
-أعد النص المصحح فقط دون أي مقدمات أو تعليقات.`;
-
-const ORGANIZE_SYSTEM = `أنت محرر نصوص محترف.
-
-قم بإعادة تنظيم النص مع:
-- إضافة عناوين رئيسية وفرعية عند الحاجة.
-- استخدام الترقيم والقوائم النقطية.
-- تقسيم الفقرات الطويلة.
-- تحسين علامات الترقيم والمسافات.
-
-لا تحذف أي معلومة ولا تضف معلومات جديدة.
-أعد النص المنظم فقط.`;
-
-const SUMMARIZE_SYSTEM_FULL = `أنت متخصص في تلخيص النصوص.
-
-لخص النص مع الحفاظ على جميع الأفكار الرئيسية.
-استخدم عناوين ونقاط واضحة.
-احذف التكرار والتفاصيل غير الضرورية فقط.
-لا تضف معلومات غير موجودة في النص الأصلي.
-أعد الملخص فقط.`;
-
-const SUMMARIZE_SYSTEM_PARTIAL = `أنت متخصص في تلخيص النصوص.
-
-لخص هذا الجزء من النص مع الحفاظ على جميع الأفكار الرئيسية.
-استخدم عناوين ونقاط واضحة.
-احذف التكرار والتفاصيل غير الضرورية فقط.
-لا تضف معلومات غير موجودة في النص الأصلي.
-أعد الملخص فقط.`;
 
 // ── Chunk helpers ─────────────────────────────────────────────────────────────
 
@@ -84,7 +49,23 @@ function splitIntoChunks(text: string, chunkChars: number): string[] {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getRetryDelay(response: Response, retryIndex: number): number {
+  const retryAfter = response.headers.get("retry-after");
+  const retryAfterSeconds = retryAfter ? Number(retryAfter) : NaN;
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(Math.max(retryAfterSeconds * 1000, 1000), 90000);
+  }
+
+  // Gemini's free tier is rate-limited by requests per minute. The increasing
+  // delay prevents a long transcript's chunks from being sent in a burst.
+  return Math.min(5000 * 2 ** retryIndex, 60000);
+}
+
+function isRetryableProviderError(provider: WorksheetProvider, status: number): boolean {
+  return provider === "gemini" && [429, 500, 502, 503, 504].includes(status);
 }
 
 // ── Single API call ───────────────────────────────────────────────────────────
@@ -100,13 +81,11 @@ async function callProvider(
   if (!meta) throw new Error(`مزود غير معروف: ${provider}`);
 
   const url = `${meta.baseUrl}/chat/completions`;
-
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
   };
 
-  // OpenRouter requires HTTP-Referer and X-Title headers
   if (provider === "openrouter") {
     headers["HTTP-Referer"] = "https://voxtract.app";
     headers["X-Title"] = "Voxtract";
@@ -120,61 +99,67 @@ async function callProvider(
         )
       : [requestedModel];
 
-  for (let attempt = 0; attempt < models.length; attempt++) {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: models[attempt],
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        temperature: 0.15,
-        max_tokens: 8192,
-      }),
-    });
+  for (const model of models) {
+    for (let retryIndex = 0; retryIndex < 3; retryIndex++) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+          temperature: 0.15,
+          max_tokens: 8192,
+        }),
+      });
 
-    if (response.ok) {
-      const data = (await response.json()) as {
-        choices: Array<{ message: { content: string } }>;
-      };
-      const result = data.choices[0]?.message?.content?.trim();
-      if (!result) throw new Error("لم يُرجع النموذج أي نتيجة");
-      return result;
+      if (response.ok) {
+        const data = (await response.json()) as {
+          choices: Array<{ message: { content: string } }>;
+        };
+        const result = data.choices[0]?.message?.content?.trim();
+        if (!result) throw new Error("لم يُرجع النموذج أي نتيجة");
+        return result;
+      }
+
+      let apiMsg = "";
+      try {
+        const body = await response.text();
+        const parsed = JSON.parse(body);
+        apiMsg = parsed?.error?.message || parsed?.message || "";
+      } catch {}
+
+      if (isRetryableProviderError(provider, response.status) && retryIndex < 2) {
+        await sleep(getRetryDelay(response, retryIndex));
+        continue;
+      }
+
+      if (isRetryableProviderError(provider, response.status)) {
+        // Try the next compatible Gemini model after the backoff attempts.
+        break;
+      }
+
+      let errMsg: string;
+      if (response.status === 401 || response.status === 403) {
+        errMsg = `مفتاح API لـ ${meta.name} غير صحيح أو منتهي الصلاحية. تحقق منه في إعدادات ورقة العمل.`;
+      } else if (provider === "gemini" && response.status === 404) {
+        errMsg =
+          "نموذج Google Gemini غير متاح حالياً. حدّث التطبيق إلى آخر نسخة ثم أعد المحاولة.";
+      } else {
+        errMsg = apiMsg || `خطأ ${response.status} من ${meta.name}`;
+      }
+      throw new Error(errMsg);
     }
-
-    let apiMsg = "";
-    try {
-      const body = await response.text();
-      const parsed = JSON.parse(body);
-      apiMsg = parsed?.error?.message || parsed?.message || "";
-    } catch {}
-
-    // Google can temporarily return 503 for a busy model. Retry with a
-    // short backoff and then use a stable fallback model automatically.
-    if (provider === "gemini" && response.status === 503 && attempt < models.length - 1) {
-      await sleep(1500 * (attempt + 1));
-      continue;
-    }
-
-    let errMsg: string;
-    if (response.status === 429) {
-      errMsg = `تجاوزت الحد المجاني لـ ${meta.name}. انتظر دقيقة ثم أعد المحاولة، أو اختر مزوداً آخر من إعدادات ورقة العمل.`;
-    } else if (response.status === 401 || response.status === 403) {
-      errMsg = `مفتاح API لـ ${meta.name} غير صحيح أو منتهي الصلاحية. تحقق منه في إعدادات ورقة العمل.`;
-    } else if (provider === "gemini" && response.status === 404) {
-      errMsg =
-        "نموذج Google Gemini غير متاح حالياً. حدّث التطبيق إلى آخر نسخة ثم أعد المحاولة.";
-    } else if (response.status === 500 || response.status === 503) {
-      errMsg = `خدمة ${meta.name} غير متاحة حالياً. أعد المحاولة بعد لحظات.`;
-    } else {
-      errMsg = apiMsg || `خطأ ${response.status} من ${meta.name}`;
-    }
-    throw new Error(errMsg);
   }
 
-  throw new Error("تعذر الاتصال بخدمة Google Gemini بعد عدة محاولات.");
+  if (provider === "gemini") {
+    throw new Error(
+      "تعذر تنفيذ العملية مع Gemini بسبب حد مؤقت للطلبات. تم تقسيم النص تلقائياً وإعادة المحاولة عدة مرات؛ انتظر قليلاً ثم أعد المحاولة، أو اختر مزوداً آخر من إعدادات ورقة العمل."
+    );
+  }
+  throw new Error(`تعذر الاتصال بخدمة ${meta.name}.`);
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -185,44 +170,35 @@ export async function processText(
   provider: WorksheetProvider,
   apiKey: string,
   onProgress?: (chunkIndex: number, totalChunks: number) => void,
-  customModel?: string
+  customModel?: string,
+  customPrompt?: string
 ): Promise<string> {
   const meta = WORKSHEET_PROVIDERS.find((p) => p.id === provider);
   if (!meta) throw new Error(`مزود غير معروف: ${provider}`);
 
   const chunks = splitIntoChunks(text, meta.chunkChars);
   const total = chunks.length;
+  const systemPrompt =
+    customPrompt?.trim() || DEFAULT_WORKSHEET_OPERATIONS[operation].prompt;
+  const betweenRequestsMs = provider === "gemini" ? 5500 : 800;
 
-  if (operation === "correct") {
-    const results: string[] = [];
-    for (let i = 0; i < chunks.length; i++) {
-      onProgress?.(i, total);
-      if (i > 0) await sleep(800);
-      results.push(await callProvider(provider, apiKey, CORRECT_SYSTEM, chunks[i], customModel));
-    }
-    return results.join("\n\n");
-  }
-
-  if (operation === "organize") {
-    const results: string[] = [];
-    for (let i = 0; i < chunks.length; i++) {
-      onProgress?.(i, total);
-      if (i > 0) await sleep(800);
-      results.push(await callProvider(provider, apiKey, ORGANIZE_SYSTEM, chunks[i], customModel));
-    }
-    return results.join("\n\n");
+  const results: string[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    onProgress?.(i, total);
+    if (i > 0) await sleep(betweenRequestsMs);
+    results.push(
+      await callProvider(
+        provider,
+        apiKey,
+        systemPrompt,
+        chunks[i],
+        customModel
+      )
+    );
   }
 
   if (operation === "summarize") {
-    const results: string[] = [];
-    for (let i = 0; i < chunks.length; i++) {
-      onProgress?.(i, total);
-      if (i > 0) await sleep(800);
-      const system = i === 0 ? SUMMARIZE_SYSTEM_FULL : SUMMARIZE_SYSTEM_PARTIAL;
-      results.push(await callProvider(provider, apiKey, system, chunks[i], customModel));
-    }
     return results.join("\n\n---\n\n");
   }
-
-  throw new Error("عملية غير معروفة");
+  return results.join("\n\n");
 }

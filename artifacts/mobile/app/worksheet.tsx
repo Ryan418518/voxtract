@@ -1,8 +1,6 @@
 import * as Clipboard from "expo-clipboard";
-import * as ExpoFileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,7 +27,8 @@ import { useHistory } from "@/context/HistoryContext";
 import { useColors } from "@/hooks/useColors";
 import { processText } from "@/services/textProcessing";
 import { worksheetStore } from "@/stores/worksheetStore";
-import { audioStem, uniqueTxtUri } from "@/utils/fileName";
+import { audioStem } from "@/utils/fileName";
+import { shareTextFile, saveTextFileToFolder } from "@/utils/textExport";
 
 const MAX_UNDO = 30;
 
@@ -139,14 +138,15 @@ export default function WorksheetScreen() {
       const providerId = worksheetSettings[providerKey];
       const apiKey = worksheetSettings.apiKeys[providerId];
       const meta = WORKSHEET_PROVIDERS.find((p) => p.id === providerId);
-      return { providerId, apiKey, meta };
+      const prompt = worksheetSettings.operations[op]?.prompt?.trim() ?? "";
+      return { providerId, apiKey, meta, prompt };
     },
     [worksheetSettings]
   );
 
   const handleAI = useCallback(
     async (op: WorksheetOp) => {
-      const { providerId, apiKey, meta } = getOpConfig(op);
+      const { providerId, apiKey, meta, prompt } = getOpConfig(op);
 
       if (!apiKey.trim()) {
         Alert.alert(
@@ -187,7 +187,8 @@ export default function WorksheetScreen() {
               setChunkProgress({ current: chunkIndex + 1, total: totalChunks });
             }
           },
-          customModel
+          customModel,
+          prompt
         );
         setText(result);
         setChunkProgress(null);
@@ -201,7 +202,7 @@ export default function WorksheetScreen() {
         setChunkProgress(null);
       }
     },
-    [text, title, getOpConfig, pushUndo]
+    [text, title, getOpConfig, pushUndo, worksheetSettings]
   );
 
   const handleCopy = useCallback(async () => {
@@ -212,33 +213,38 @@ export default function WorksheetScreen() {
     setTimeout(() => setCopyDone(false), 2000);
   }, [text]);
 
-  const handleShare = useCallback(async () => {
-    if (!text) return;
-    Haptics.selectionAsync();
-    const stem = title || "transcription";
-    const { uri: fileUri, name: fileName } = await uniqueTxtUri(stem);
-    await ExpoFileSystem.writeAsStringAsync(fileUri, text, {
-      encoding: ExpoFileSystem.EncodingType.UTF8,
-    });
-    if (Platform.OS === "web") {
-      const blob = new Blob([text], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else {
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: "text/plain",
-          dialogTitle: "تصدير النص",
-          UTI: "public.plain-text",
-        });
-      }
+  const handleExportError = useCallback((err: unknown) => {
+    const message = err instanceof Error ? err.message : "تعذر تصدير الملف.";
+    Alert.alert("تعذر التصدير", message);
+  }, []);
+
+  const handleExport = useCallback(() => {
+    if (!text.trim()) {
+      Alert.alert("تنبيه", "لا يوجد نص لتصديره.");
+      return;
     }
-  }, [text, title]);
+
+    Haptics.selectionAsync();
+    Alert.alert("تصدير النص", "اختر طريقة التصدير:", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حفظ في مجلد",
+        onPress: () => {
+          void saveTextFileToFolder(text, title || "transcription")
+            .then(({ fileName }) => {
+              Alert.alert("تم الحفظ", `تم حفظ الملف ${fileName} في المجلد الذي اخترته.`);
+            })
+            .catch(handleExportError);
+        },
+      },
+      {
+        text: "مشاركة مع تطبيق آخر",
+        onPress: () => {
+          void shareTextFile(text, title || "transcription").catch(handleExportError);
+        },
+      },
+    ]);
+  }, [text, title, handleExportError]);
 
   const handleSave = useCallback(async () => {
     if (!text.trim()) {
@@ -311,6 +317,8 @@ export default function WorksheetScreen() {
           const isActive = processing === btn.op;
           const isDisabled = processing !== null;
           const { meta } = getOpConfig(btn.op);
+          const buttonLabel =
+            worksheetSettings.operations[btn.op]?.label?.trim() || btn.label;
           const providerLabel = meta
             ? meta.name.replace("Google ", "").replace(" AI", "")
             : "";
@@ -333,7 +341,7 @@ export default function WorksheetScreen() {
               )}
               <View style={s.aiBtnText}>
                 <Text style={[s.aiBtnLabel, { color: btn.color }]}>
-                  {btn.label}
+                  {buttonLabel}
                 </Text>
                 <Text style={s.aiBtnDesc}>
                   {isActive && chunkProgress && chunkProgress.total > 1
@@ -430,7 +438,7 @@ export default function WorksheetScreen() {
 
         {/* Export */}
         <Pressable
-          onPress={handleShare}
+          onPress={handleExport}
           style={({ pressed }) => [
             s.bottomBtn,
             pressed && s.bottomBtnPressed,

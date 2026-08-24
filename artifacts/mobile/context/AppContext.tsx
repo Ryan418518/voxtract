@@ -42,6 +42,56 @@ const PROVIDER_URLS: Record<Provider, string> = {
 export type WorksheetProvider = "gemini" | "openrouter" | "groq" | "mistral";
 export type WorksheetOp = "correct" | "organize" | "summarize";
 
+export interface WorksheetOperationSettings {
+  label: string;
+  prompt: string;
+}
+
+export type WorksheetOperations = Record<WorksheetOp, WorksheetOperationSettings>;
+
+export const DEFAULT_WORKSHEET_OPERATIONS: WorksheetOperations = {
+  correct: {
+    label: "مراجعة وتصحيح",
+    prompt: `أنت مدقق لغوي محترف.
+
+قم بتصحيح جميع الأخطاء الإملائية والنحوية وعلامات الترقيم فقط.
+لا تغير المعنى أو الأسلوب.
+لا تختصر النص ولا تضف أي معلومات جديدة.
+أعد النص المصحح فقط دون أي مقدمات أو تعليقات.`,
+  },
+  organize: {
+    label: "تنظيم وتنسيق",
+    prompt: `أنت محرر نصوص محترف.
+
+قم بإعادة تنظيم النص مع:
+- إضافة عناوين رئيسية وفرعية عند الحاجة.
+- استخدام الترقيم والقوائم النقطية.
+- تقسيم الفقرات الطويلة.
+- تحسين علامات الترقيم والمسافات.
+
+لا تحذف أي معلومة ولا تضف معلومات جديدة.
+أعد النص المنظم فقط.`,
+  },
+  summarize: {
+    label: "تلخيص",
+    prompt: `أنت متخصص في تلخيص النصوص.
+
+لخص النص مع الحفاظ على جميع الأفكار الرئيسية.
+استخدم عناوين ونقاط واضحة.
+احذف التكرار والتفاصيل غير الضرورية فقط.
+لا تضف معلومات غير موجودة في النص الأصلي.
+أعد الملخص فقط.`,
+  },
+};
+
+function cloneDefaultWorksheetOperations(): WorksheetOperations {
+  return {
+    correct: { ...DEFAULT_WORKSHEET_OPERATIONS.correct },
+    organize: { ...DEFAULT_WORKSHEET_OPERATIONS.organize },
+    summarize: { ...DEFAULT_WORKSHEET_OPERATIONS.summarize },
+  };
+}
+
 export interface WorksheetProviderMeta {
   id: WorksheetProvider;
   name: string;
@@ -125,6 +175,7 @@ export interface WorksheetSettings {
   organizeProvider: WorksheetProvider;
   summarizeProvider: WorksheetProvider;
   openrouterModel: string;
+  operations: WorksheetOperations;
 }
 
 const DEFAULT_WORKSHEET: WorksheetSettings = {
@@ -133,6 +184,7 @@ const DEFAULT_WORKSHEET: WorksheetSettings = {
   organizeProvider: "gemini",
   summarizeProvider: "gemini",
   openrouterModel: "meta-llama/llama-3.3-70b-instruct:free",
+  operations: cloneDefaultWorksheetOperations(),
 };
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
@@ -175,6 +227,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               ...prev,
               ...saved,
               apiKeys: { ...prev.apiKeys, ...saved.apiKeys },
+              operations: {
+                ...prev.operations,
+                ...(saved.operations ?? {}),
+              },
             }));
           } catch {}
         }
@@ -197,6 +253,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           ...partial,
           apiKeys: { ...prev.apiKeys, ...(partial.apiKeys ?? {}) },
+          operations: {
+            ...prev.operations,
+            ...(partial.operations ?? {}),
+          },
         };
         AsyncStorage.setItem(WORKSHEET_STORAGE_KEY, JSON.stringify(next));
         return next;
