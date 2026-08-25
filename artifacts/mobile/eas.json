@@ -9,6 +9,7 @@
       "corepack": true,
       "pnpm": "9.12.0",
       "android": {
+        "image": "sdk-54",
         "buildType": "apk",
         "credentialsSource": "local"
       }
