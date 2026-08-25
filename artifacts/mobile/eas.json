@@ -5,6 +5,8 @@
   },
   "build": {
     "preview": {
+      "corepack": true,
+      "pnpm": "9.12.0",
       "android": {
         "buildType": "apk",
         "credentialsSource": "local"
